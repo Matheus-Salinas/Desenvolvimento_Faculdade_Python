@@ -2,7 +2,7 @@ from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 import os
-
+# Teste de commit
 # Definir o caminho correto do Java
 os.environ["JAVA_HOME"] = r"C:\Program Files\Zulu\zulu-21"  # Ajuste para a pasta correta do JDK
 
