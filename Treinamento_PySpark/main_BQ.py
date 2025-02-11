@@ -48,7 +48,7 @@ def tabela_geral(df):
         .withColumn('Mes_de_nascimento', date_format(col('Nascimento'), 'MMM'))\
         .withColumn('Dia_de_nascimento', day(col('Nascimento')))\
         .withColumn('Selecao - Peso - Altura', concat_ws(' - ', 'Selecao', 'Peso', 'Altura'))\
-        .withColumn('Idade', floor(datediff(current_date(), col('Nascimento')) / 365)  # Calcula a idade
+        .withColumn('Idade', floor(datediff(current_date(), col('Nascimento')) / 365))
 
     # Alterar Tipo dos valores das colunas
     df = df.withColumn('Ano', col('Ano').cast(IntegerType()))
