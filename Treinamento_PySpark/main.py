@@ -56,6 +56,20 @@ def tabela_geral(df):
 
     df.show(50)
     print("Tabela Geral")
+    europa = ['Sweden', 'Germany', 'France', 'Belgium', 'Croatia', 'Spain', 'Denmark', 'Iceland', 'Switzerland', 'England', 'Poland', 'Portugal', 'Serbia']
+    asia = ['Russia', 'IR Iran', 'Nigeria', 'Korea Republic', 'Saudi Arabia', 'Japan', ]
+    africa = ['Senegal', 'Morocco', 'Tunisia', 'Egypt']
+    oceania = ['Australia']
+    america_norte = ['Panama', 'Mexico', 'Costa Rica']
+    america_sul = ['Argentina', 'Peru', 'Uruguay', 'Brazil', 'Colombia']
+    df = df.withColumn('Continente', when(col('Selecao').isin(europa), 'Europa')\
+             .when(col('Selecao').isin(asia), 'Ásia')\
+             .when(col('Selecao').isin(africa), 'África')\
+             .when(col('Selecao').isin(oceania), 'Oceania')\
+             .when(col('Selecao').isin(america_norte), 'América do Norte')\
+             .when(col('Selecao').isin(america_sul), 'América do Sul')\
+             .otherwise('Verificar'))
+    df.show()
     return df
 
 def gerar_tabela_grupo_peso(df):
@@ -78,6 +92,61 @@ def gerar_tabela_group_altura(df):
     df_altura.show()
     return df_altura
 
+def tabelas_usando_union(df):
+    df_america_sul = df.filter('Continente = "América do Sul"')
+    df_america_sul.select('Selecao').distinct().show()
+    df_america_norte = df.filter('Continente = "América do Norte"')
+    df_america_norte.select('Selecao').distinct().show()
+
+    #Base com union
+    df_americas = df_america_sul.union(df_america_norte)
+    df_americas.select('Selecao').distinct().show()
+    return df_americas
+
+def criar_tabela_filtrada(df, selecao, numeros_excluidos=None):
+    tabela_filtrada = df.filter(col('Selecao') == selecao) \
+        .drop('Nascimento', 'Time', 'Mes_de_nascimento', 'Dia_de_nascimento', 
+              'Selecao - Peso - Altura', 'Idade', 'Rankin_Altura', 'Rank_Peso', 'Rank_Idade') \
+        .withColumnRenamed('Numero_da_Camisa', 'Numero')
+    
+    if numeros_excluidos:
+        tabela_filtrada = tabela_filtrada.filter(~col('Numero').isin(numeros_excluidos))
+    
+    return tabela_filtrada
+
+def tabela_usando_joins(df):
+    # Criando as bases usadas para os joins
+    tabela_argentina = criar_tabela_filtrada(df, "Argentina")
+    tabela_brasil = criar_tabela_filtrada(df, "Brazil", numeros_excluidos=[22, 5, 7])
+    
+    # Exibindo as tabelas
+    print("Tabela Argentina:")
+    tabela_argentina.show(40)
+    print("Tabela Brasil:")
+    tabela_brasil.show(40)
+    
+    # Realizando os joins
+    df_join_simples = tabela_argentina.join(tabela_brasil, "Numero")
+    df_inner_join = tabela_argentina.join(tabela_brasil, "Numero", "inner")
+    df_left_join = tabela_argentina.join(tabela_brasil, "Numero", "left")
+    df_right_join = tabela_argentina.join(tabela_brasil, "Numero", "right")
+    df_full_join = tabela_argentina.join(tabela_brasil, "Numero", "full")
+    df_anti_join = tabela_argentina.join(tabela_brasil, "Numero", "anti")
+    
+    # Exibindo os resultados dos joins
+    print("Join Simples:")
+    df_join_simples.show(40)
+    print("Inner Join:")
+    df_inner_join.show(40)
+    print("Left Join:")
+    df_left_join.show(40)
+    print("Right Join:")
+    df_right_join.show(40)
+    print("Full Join:")
+    df_full_join.show(40)
+    print("Anti Join:")
+    df_anti_join.show(40)
+
 # Executar as funções
 df = tabela_geral(df)
 print('Tabela Geral Gerada')
@@ -85,11 +154,6 @@ df_peso = gerar_tabela_grupo_peso(df)
 print('Tabela Group By Peso Gerada')
 df_altura = gerar_tabela_group_altura(df)
 print('Tabela Group By Altura Gerada')
-
-# Filtros adicionais (opcional)
-df.filter((col('Selecao') == "Brazil") & (col('Altura') > 180)).show()
-df.filter((col('Selecao') == "Brazil") | (col('Selecao') == "Argentina")).show(5)
-df.filter((col('Selecao') == "Brazil") & (col('Posicao') == 'DF') | (col('Selecao') == 'Argentina') & (col('Posicao') == 'DF')).show()
 
 # Fechar a SparkSession
 spark.stop()
