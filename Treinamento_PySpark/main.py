@@ -1,10 +1,15 @@
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
+from google.cloud import bigquery
 import os
+import pandas as pd
 
 # Definir o caminho correto do Java
 os.environ["JAVA_HOME"] = r"C:\Program Files\Zulu\zulu-21"  # Ajuste para a pasta correta do JDK
+
+# Configurar as credenciais do Google Cloud
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "C:\\Users\\mathe\\OneDrive\\Documentos\\Credenciais_Cloud\\Credencial_Bigquery\\credencial_acesso.json"  # Substitua pelo caminho do seu arquivo JSON
 
 # Criar a SparkSession
 spark = (
@@ -19,6 +24,28 @@ df = spark.read.csv('data/Selecao_Fifa.csv', header=True, inferSchema=True)
 
 # Exibir tipo dos valores das colunas
 df.printSchema()
+
+# Função para enviar DataFrames para o BigQuery
+def upload_to_bigquery(df, table_id):
+    client = bigquery.Client()
+    df_pandas = df.toPandas()  # Converte o DataFrame do Spark para Pandas
+    
+    # Verifica se o DataFrame do Pandas está vazio
+    if df_pandas.empty:
+        print(f"O DataFrame para a tabela {table_id} está vazio. Nada para carregar.")
+        return
+    
+    # Verifica os tipos de dados do DataFrame do Pandas
+    print(f"Esquema do DataFrame para a tabela {table_id}:")
+    print(df_pandas.dtypes)
+    
+    # Tenta carregar o DataFrame no BigQuery
+    try:
+        job = client.load_table_from_dataframe(df_pandas, table_id)
+        job.result()  # Aguarda a conclusão do job
+        print(f"Tabela {table_id} carregada com sucesso.")
+    except Exception as e:
+        print(f"Erro ao carregar a tabela {table_id}: {e}")
 
 def tabela_geral(df):
     # Renomear as colunas
@@ -36,7 +63,7 @@ def tabela_geral(df):
         .withColumn('Mes_de_nascimento', date_format(col('Nascimento'), 'MMM'))\
         .withColumn('Dia_de_nascimento', day(col('Nascimento')))\
         .withColumn('Selecao - Peso - Altura', concat_ws(' - ', 'Selecao', 'Peso', 'Altura'))\
-        .withColumn('Idade', floor(datediff(current_date(), col('Nascimento')) / 365))  # Calcula a idade
+        .withColumn('Idade', floor(datediff(current_date(), col('Nascimento')) / 365))
 
     # Alterar Tipo dos valores das colunas
     df = df.withColumn('Ano', col('Ano').cast(IntegerType()))
@@ -70,6 +97,10 @@ def tabela_geral(df):
              .when(col('Selecao').isin(america_sul), 'América do Sul')\
              .otherwise('Verificar'))
     df.show()
+
+    # Enviar para o BigQuery
+    table_id = "projeto-treinamento-450619.fifa_dataset.tabela_geral"  # Substitua pelo seu projeto e dataset
+    upload_to_bigquery(df, table_id)
     return df
 
 def gerar_tabela_grupo_peso(df):
@@ -80,6 +111,10 @@ def gerar_tabela_grupo_peso(df):
              max('Peso').alias('Maximo_Peso'),
              min('Peso').alias('Minimo_Peso'))
     df_peso.show()
+
+    # Enviar para o BigQuery
+    table_id = "projeto-treinamento-450619.fifa_dataset.tabela_peso"  # Substitua pelo seu projeto e dataset
+    upload_to_bigquery(df_peso, table_id)
     return df_peso
 
 def gerar_tabela_group_altura(df):
@@ -90,6 +125,10 @@ def gerar_tabela_group_altura(df):
              max('Altura').alias('Maximo_Altura'),
              min('Altura').alias('Minimo_Altura'))
     df_altura.show()
+
+    # Enviar para o BigQuery
+    table_id = "projeto-treinamento-450619.fifa_dataset.tabela_altura"  # Substitua pelo seu projeto e dataset
+    upload_to_bigquery(df_altura, table_id)
     return df_altura
 
 def tabelas_usando_union(df):
@@ -98,9 +137,13 @@ def tabelas_usando_union(df):
     df_america_norte = df.filter('Continente = "América do Norte"')
     df_america_norte.select('Selecao').distinct().show()
 
-    #Base com union
+    # Base com union
     df_americas = df_america_sul.union(df_america_norte)
     df_americas.select('Selecao').distinct().show()
+
+    # Enviar para o BigQuery
+    table_id = "projeto-treinamento-450619.fifa_dataset.tabela_americas"  # Substitua pelo seu projeto e dataset
+    upload_to_bigquery(df_americas, table_id)
     return df_americas
 
 def criar_tabela_filtrada(df, selecao, numeros_excluidos=None):
@@ -117,13 +160,24 @@ def criar_tabela_filtrada(df, selecao, numeros_excluidos=None):
 def tabela_usando_joins(df):
     # Criando as bases usadas para os joins
     tabela_argentina = criar_tabela_filtrada(df, "Argentina")
-    tabela_brasil = criar_tabela_filtrada(df, "Brazil", numeros_excluidos=[22, 5, 7])
+    tabela_brasil = criar_tabela_filtrada(df, "Brazil", numeros_excluidos=[22,5,7])
     
-    # Exibindo as tabelas
-    print("Tabela Argentina:")
-    tabela_argentina.show(40)
-    print("Tabela Brasil:")
-    tabela_brasil.show(40)
+    # Verifica se as tabelas estão vazias
+    if tabela_argentina.count() == 0:
+        print("A tabela Argentina está vazia.")
+        return
+    if tabela_brasil.count() == 0:
+        print("A tabela Brasil está vazia.")
+        return
+    
+    # Renomear colunas para evitar conflitos
+    for coluna in tabela_argentina.columns:
+        if coluna != "Numero":  # Mantém a coluna de join sem alteração
+            tabela_argentina = tabela_argentina.withColumnRenamed(coluna, f"{coluna}_arg")
+    
+    for coluna in tabela_brasil.columns:
+        if coluna != "Numero":  # Mantém a coluna de join sem alteração
+            tabela_brasil = tabela_brasil.withColumnRenamed(coluna, f"{coluna}_bra")
     
     # Realizando os joins
     df_join_simples = tabela_argentina.join(tabela_brasil, "Numero")
@@ -133,19 +187,34 @@ def tabela_usando_joins(df):
     df_full_join = tabela_argentina.join(tabela_brasil, "Numero", "full")
     df_anti_join = tabela_argentina.join(tabela_brasil, "Numero", "anti")
     
-    # Exibindo os resultados dos joins
-    print("Join Simples:")
-    df_join_simples.show(40)
-    print("Inner Join:")
-    df_inner_join.show(40)
-    print("Left Join:")
-    df_left_join.show(40)
-    print("Right Join:")
-    df_right_join.show(40)
-    print("Full Join:")
-    df_full_join.show(40)
-    print("Anti Join:")
-    df_anti_join.show(40)
+    # Exibir as tabelas de join para verificação
+    print("Tabela Join Simples:")
+    df_join_simples.show()
+    print("Tabela Inner Join:")
+    df_inner_join.show()
+    print("Tabela Left Join:")
+    df_left_join.show()
+    print("Tabela Right Join:")
+    df_right_join.show()
+    print("Tabela Full Join:")
+    df_full_join.show()
+    print("Tabela Anti Join:")
+    df_anti_join.show()
+    
+    # Enviar para o BigQuery
+    table_id_simples = "projeto-treinamento-450619.fifa_dataset.tabela_join_simples"
+    table_id_inner = "projeto-treinamento-450619.fifa_dataset.tabela_inner_join"
+    table_id_left = "projeto-treinamento-450619.fifa_dataset.tabela_left_join"
+    table_id_right = "projeto-treinamento-450619.fifa_dataset.tabela_right_join"
+    table_id_full = "projeto-treinamento-450619.fifa_dataset.tabela_full_join"
+    table_id_anti = "projeto-treinamento-450619.fifa_dataset.tabela_anti_join"
+
+    upload_to_bigquery(df_join_simples, table_id_simples)
+    upload_to_bigquery(df_inner_join, table_id_inner)
+    upload_to_bigquery(df_left_join, table_id_left)
+    upload_to_bigquery(df_right_join, table_id_right)
+    upload_to_bigquery(df_full_join, table_id_full)
+    upload_to_bigquery(df_anti_join, table_id_anti)
 
 # Executar as funções
 df = tabela_geral(df)
@@ -154,6 +223,10 @@ df_peso = gerar_tabela_grupo_peso(df)
 print('Tabela Group By Peso Gerada')
 df_altura = gerar_tabela_group_altura(df)
 print('Tabela Group By Altura Gerada')
+df_americas = tabelas_usando_union(df)
+print('Tabela Americas Gerada')
+df_usando_joins = tabela_usando_joins(df)
+print('Tabelas de Joins Geradas')
 
 # Fechar a SparkSession
 spark.stop()
