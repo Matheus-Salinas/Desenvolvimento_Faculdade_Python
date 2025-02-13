@@ -6,7 +6,7 @@ import os
 import pandas as pd
 
 # Definir o caminho correto do Java
-os.environ["JAVA_HOME"] = r"C:\Program Files\Zulu\zulu-21"  # Ajuste para a pasta correta do JDK
+os.environ["JAVA_HOME"] = r"C:\Program Files\Java\jdk-11"  # Ajuste para a pasta correta do JDK
 
 # Configurar as credenciais do Google Cloud
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "C:\\Users\\mathe\\OneDrive\\Documentos\\Credenciais_Cloud\\Credencial_Bigquery\\credencial_acesso.json"  # Substitua pelo caminho do seu arquivo JSON
@@ -20,7 +20,7 @@ spark = (
 )
 
 # Ler o CSV (verifique se o caminho está correto)
-df = spark.read.csv('data/Selecao_Fifa.csv', header=True, inferSchema=True)
+df = spark.read.csv('C:\\Users\\mathe\\OneDrive\\Documentos\\Repositorio_GitHub\\Desenvolvimento_Faculdade_Python\\desenvolvimento_pyspark\\data\\Selecao_Fifa.csv', header=True, inferSchema=True)
 
 # Exibir tipo dos valores das colunas
 df.printSchema()
